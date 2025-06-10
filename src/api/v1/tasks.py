@@ -1,14 +1,14 @@
-from celery.result import AsyncResult
-from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
-from uuid import uuid4
+from http import HTTPStatus
 
-from core.celery_config import celery_app
 from core.config import settings as st
+from models.tasks import TaskStatus, TaskPriority
 from schemas.exceptions import ExcBaseS
-from schemas.tasks import BaseTaskS, TaskCreateS, TaskToDBS, TaskS
+from schemas.tasks import (
+    BaseTaskS, TaskCreateS, TaskToDBS, TaskS, TaskListS, TaskStatusS
+)
+from services.queues import get_queue_service, QueueService
 from services.tasks import get_task_service, TaskService
-from tasks.fast_tasks.tasks import fast_default
 
 
 router = APIRouter()
@@ -23,11 +23,12 @@ router = APIRouter()
 )
 async def create(
     body: TaskCreateS,
-    service: TaskService = Depends(get_task_service),
+    task_service: TaskService = Depends(get_task_service),
+    queue_service: QueueService = Depends(get_queue_service),
 ) -> BaseTaskS:
-    """Create new task."""
-    item = TaskToDBS.model_validate(body)
-    db_item = service.create(item)
+    item = TaskToDBS.model_validate(body, from_attributes=True)
+
+    db_item = await task_service.create(item)
 
     if isinstance(db_item, ExcBaseS):
         raise HTTPException(
@@ -35,29 +36,109 @@ async def create(
             detail=db_item.msg,
         )
 
-    fast_default.apply_async(
-        args=[body.name],
-        task_id=item.uuid,
-        priority=item.priority_code,
+    await queue_service.send_to_queue(
+        queue_name=st.task_name_queue_match[item.name],
+        message=item.model_dump_json(),
+        priority=item.priority_code
     )
+
+    await task_service.update(
+        item.uuid, {'status': TaskStatus.PENDING})
 
     return BaseTaskS(uuid=item.uuid)
 
 
 @router.get(
     '/{task_id}',
-    # response_model=BaseTaskS,
+    response_model=TaskS,
     response_model_by_alias=False,
     summary='Task info',
     description='Show task info',
 )
 async def task_info(
-    task_id: str
-):
-    task_result = AsyncResult(task_id)
-    print(task_result)
-    return {
-        "task_id": task_id,
-        "status": task_result.status,
-        "result": task_result.result if task_result.ready() else None,
-    }
+    task_id: str,
+    task_service: TaskService = Depends(get_task_service),
+) -> TaskS:
+    item = await task_service.get(task_id)
+    if isinstance(item, ExcBaseS):
+        raise HTTPException(
+            status_code=item.code,
+            detail=item.msg,
+        )
+    return item
+
+
+@router.get(
+    '/{task_id}/status',
+    response_model=TaskStatusS,
+    response_model_by_alias=False,
+    summary='Task info',
+    description='Show task info',
+)
+async def task_status(
+    task_id: str,
+    task_service: TaskService = Depends(get_task_service),
+) -> TaskStatusS:
+    item = await task_service.get(task_id)
+    if isinstance(item, ExcBaseS):
+        raise HTTPException(
+            status_code=item.code,
+            detail=item.msg,
+        )
+    return TaskStatusS(status=item.status)
+
+
+@router.delete(
+    '/{task_id}',
+    response_model=BaseTaskS,
+    response_model_by_alias=False,
+    summary='Task cancel',
+    description='Delete task from queue',
+)
+async def cancel_task(
+    task_id: str,
+    task_service: TaskService = Depends(get_task_service),
+) -> BaseTaskS:
+    item = await task_service.get(task_id)
+    if isinstance(item, ExcBaseS):
+        raise HTTPException(
+            status_code=item.code,
+            detail=item.msg,
+        )
+    if item.status not in (TaskStatus.NEW, TaskStatus.PENDING):
+        raise HTTPException(
+            status_code=HTTPStatus.BAD_REQUEST,
+            detail='Task IN_PROGRESS or COMPLETED',
+        )
+
+    result = await task_service.update(
+        task_id, {'status': TaskStatus.CANCELLED})
+    if isinstance(result, ExcBaseS):
+        raise HTTPException(
+            status_code=result.code,
+            detail=result.msg,
+        )
+    return item
+
+
+@router.get(
+    '/',
+    response_model=TaskListS,
+    response_model_by_alias=False,
+    summary='Get task list',
+    description='Get task list',
+)
+async def get_all(
+    limit: int = 20,
+    offset: int = 0,
+    status: TaskStatus = None,
+    priority: TaskPriority = None,
+    task_service: TaskService = Depends(get_task_service),
+) -> TaskListS:
+    objs = await task_service.get_list(
+        limit,
+        offset,
+        status=status,
+        priority=priority,
+    )
+    return objs

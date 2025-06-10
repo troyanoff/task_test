@@ -4,7 +4,7 @@ from sqlalchemy import String
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import JSONB
 
-from db.postgres import Base
+from models.base import Base
 
 
 class TaskPriority(str, Enum):
@@ -25,6 +25,7 @@ class TaskStatus(str, Enum):
 class Task(Base):
     name: Mapped[str] = mapped_column(String(128))
     description: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    params: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     priority: Mapped[TaskPriority] = mapped_column(
         default=TaskPriority.MEDIUM, index=True
     )

@@ -25,111 +25,150 @@ services:
       - "15672:15672"
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
+    env_file:
+      - .env
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  celery_worker_fast:
+  tasks_service:
+    image: tasks_service
     build: .
-    container_name: celery_worker_fast
+    container_name: tasks_service
     restart: always
-    command:
-      celery 
-      -A core.celery_config 
-      worker 
-      -Q fast_tasks 
-      -P gevent
-      --hostname=worker.fast_$${HOSTNAME} 
-      --concurrency=2
     env_file:
       - .env
-    deploy:
-      resources:
-        limits:
-          cpus: '1'
-          memory: 512M
+    ports:
+      - 7557
     depends_on:
       postgres_test:
         condition: service_healthy
       rabbitmq:
         condition: service_started
 
-  celery_worker_normal:
-    build: .
-    container_name: celery_worker_normal
+  sync_worker_cpu_fast:
+    image: sync_worker
+    build: 
+      context: .
+      dockerfile: src/sync_worker/Dockerfile
+    container_name: sync_worker_cpu_fast
     restart: always
-    command:
-      celery -A core.celery_config worker -Q normal_tasks 
-      --hostname=worker.normal_$${HOSTNAME} -P gevent --concurrency=500
     env_file:
       - .env
-    deploy:
-      resources:
-        limits:
-          cpus: '1'
-          memory: 512M
+    command: ["python3", "main.py", "--queue", "CPU_fast"]
     depends_on:
       postgres_test:
         condition: service_healthy
       rabbitmq:
         condition: service_started
+      tasks_service:
+        condition: service_started
 
-  celery_worker_slow:
-    build: .
-    container_name: celery_worker_slow
+  sync_worker_cpu_normal:
+    image: sync_worker
+    build: 
+      context: .
+      dockerfile: src/sync_worker/Dockerfile
+    container_name: sync_worker_cpu_normal
     restart: always
-    command:
-      celery 
-      -A core.celery_config 
-      worker 
-      -Q slow_tasks 
-      -P gevent 
-      --hostname=worker.slow_$${HOSTNAME} 
-      --concurrency=100
     env_file:
       - .env
-    deploy:
-      resources:
-        limits:
-          cpus: '1'
-          memory: 512M
+    command: ["python3", "main.py", "--queue", "CPU_normal"]
     depends_on:
       postgres_test:
         condition: service_healthy
       rabbitmq:
         condition: service_started
+      tasks_service:
+        condition: service_started
 
-  # tasks_service:
-  #   image: tasks_service
-  #   build: .
-  #   container_name: tasks_service
-  #   restart: always
-  #   env_file:
-      # - .env
-  #   ports:
-  #     - 7557
-  #   depends_on:
-  #     postgres_test:
-  #       condition: service_healthy
-  #     rabbitmq:
-  #       condition: service_started
+  sync_worker_cpu_slow:
+    image: sync_worker
+    build: 
+      context: .
+      dockerfile: src/sync_worker/Dockerfile
+    container_name: sync_worker_cpu_slow
+    restart: always
+    env_file:
+      - .env
+    command: ["python3", "main.py", "--queue", "CPU_slow"]
+    depends_on:
+      postgres_test:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_started
+      tasks_service:
+        condition: service_started
 
-  # nginx:
-  #   image: nginx:1.25.3
-  #   container_name: nginx
-  #   restart: always
-  #   volumes:
-  #     - ./nginx.conf:/etc/nginx/nginx.conf:ro
-  #     - ./configs:/etc/nginx/conf.d:ro
-  #   depends_on:
-  #     - postgres_test
-  #     - celery_worker
-  #     - rabbitmq
-  #     - tasks_service
-  #   ports:
-  #     - 80:80
+  async_worker_io_fast:
+    image: async_worker
+    build: 
+      context: .
+      dockerfile: src/async_worker/Dockerfile
+    container_name: async_worker_io_fast
+    restart: always
+    env_file:
+      - .env
+    command: ["python3", "main.py", "--queue", "IO_fast"]
+    depends_on:
+      postgres_test:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_started
+      tasks_service:
+        condition: service_started
+
+  async_worker_io_normal:
+    image: async_worker
+    build: 
+      context: .
+      dockerfile: src/async_worker/Dockerfile
+    container_name: async_worker_io_normal
+    restart: always
+    env_file:
+      - .env
+    command: ["python3", "main.py", "--queue", "IO_normal"]
+    depends_on:
+      postgres_test:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_started
+      tasks_service:
+        condition: service_started
+
+  async_worker_io_slow:
+    image: async_worker
+    build: 
+      context: .
+      dockerfile: src/async_worker/Dockerfile
+    container_name: async_worker_io_slow
+    restart: always
+    env_file:
+      - .env
+    command: ["python3", "main.py", "--queue", "IO_slow"]
+    depends_on:
+      postgres_test:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_started
+      tasks_service:
+        condition: service_started
+
+  nginx:
+    image: nginx:1.25.3
+    container_name: nginx
+    restart: always
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./configs:/etc/nginx/conf.d:ro
+    depends_on:
+      - postgres_test
+      - rabbitmq
+      - tasks_service
+    ports:
+      - 80:80
 
 volumes:
   postgres_test_value:

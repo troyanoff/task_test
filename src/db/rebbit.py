@@ -1,0 +1,32 @@
+import aio_pika
+
+from contextlib import asynccontextmanager
+from typing import AsyncGenerator
+
+from core.config import settings as st
+
+
+# @asynccontextmanager
+async def get_rabbit_channel() -> AsyncGenerator[aio_pika.Channel, None]:
+    connection = await aio_pika.connect_robust(st.dsn_rebbit)
+    async with connection.channel() as channel:
+        yield channel
+    # try:
+    #     channel = await connection.channel()
+    #     yield channel
+    # finally:
+    #     await connection.close()
+
+
+async def setup_queues():
+    connection = await aio_pika.connect_robust(st.dsn_rebbit)
+    channel = await connection.channel()
+
+    for q in st.queues_config:
+        await channel.declare_queue(
+            q['name'],
+            durable=True,
+            arguments={'x-max-priority': q['priority']}
+        )
+
+    await connection.close()

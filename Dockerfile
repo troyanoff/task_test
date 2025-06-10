@@ -8,15 +8,13 @@ ENV PYTHONUNBUFFERED=1
 COPY requirements.txt requirements.txt
 
 RUN pip install --upgrade pip \
-    && pip install -r requirements.txt --no-cache-dir \
-    && apt update\
-    && apt install netcat-traditional
+    && pip install -r requirements.txt --no-cache-dir
 
 COPY ./src .
 
-# COPY run.sh run.sh
+COPY run.sh run.sh
 
 EXPOSE 7557
 
-# ENTRYPOINT ["sh", "run.sh"]
+ENTRYPOINT ["sh", "run.sh"]
        

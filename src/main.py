@@ -2,27 +2,21 @@ import uvicorn
 
 from fastapi import FastAPI
 from fastapi.responses import ORJSONResponse
-# from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager
 
 from api.v1 import (
     tasks
 )
 from core.config import settings as st
+from db.rebbit import setup_queues
 
 print(st)
 
 
-# @asynccontextmanager
-# async def lifespan(app: FastAPI):
-#     redis.redis = Redis(host=st.redis_host, port=st.redis_port)
-#     await FastAPILimiter.init(redis.redis)
-#     # await create_database()
-#     # Раскомментить для локального запуска.
-#     # os.system('alembic revision --autogenerate -m 'Initial tables'')
-#     # os.system('alembic upgrade head')
-#     # os.system('python3 create_superuser.py')
-#     yield
-#     await redis.redis.close()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await setup_queues()
+    yield
 
 
 app = FastAPI(
@@ -32,6 +26,7 @@ app = FastAPI(
     openapi_url='/api/doc.json',
     default_response_class=ORJSONResponse,
     version='1.0.0',
+    lifespan=lifespan
 )
 
 

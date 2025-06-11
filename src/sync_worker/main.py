@@ -131,8 +131,8 @@ def parse_args():
     parser.add_argument(
         '--threads',
         type=int,
-        default=4,
-        help='Threads count (default: 4)'
+        default=5,
+        help='Threads count (default: 5)'
     )
     return parser.parse_args()
 

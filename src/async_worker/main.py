@@ -124,7 +124,7 @@ class AsyncWorker:
 
     async def execute_task(self, task: TaskS):
         result = await self.task_name_match[task.name](
-            task.params)
+            **task.params)
         return result
 
     async def start(self):

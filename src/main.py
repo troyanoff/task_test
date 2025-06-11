@@ -10,8 +10,6 @@ from api.v1 import (
 from core.config import settings as st
 from db.rebbit import setup_queues
 
-print(st)
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -21,9 +19,9 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title=st.project_name,
-    description='Управление задачами.',
-    docs_url='/api/doc',
-    openapi_url='/api/doc.json',
+    description='Task management',
+    docs_url='/api/docs',
+    openapi_url='/api/docs.json',
     default_response_class=ORJSONResponse,
     version='1.0.0',
     lifespan=lifespan

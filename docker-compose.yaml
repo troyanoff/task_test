@@ -46,7 +46,7 @@ services:
       postgres_test:
         condition: service_healthy
       rabbitmq:
-        condition: service_started
+        condition: service_healthy
 
   sync_worker_cpu_fast:
     image: sync_worker
@@ -62,7 +62,7 @@ services:
       postgres_test:
         condition: service_healthy
       rabbitmq:
-        condition: service_started
+        condition: service_healthy
       tasks_service:
         condition: service_started
 
@@ -80,7 +80,7 @@ services:
       postgres_test:
         condition: service_healthy
       rabbitmq:
-        condition: service_started
+        condition: service_healthy
       tasks_service:
         condition: service_started
 
@@ -98,7 +98,7 @@ services:
       postgres_test:
         condition: service_healthy
       rabbitmq:
-        condition: service_started
+        condition: service_healthy
       tasks_service:
         condition: service_started
 
@@ -116,7 +116,7 @@ services:
       postgres_test:
         condition: service_healthy
       rabbitmq:
-        condition: service_started
+        condition: service_healthy
       tasks_service:
         condition: service_started
 
@@ -134,7 +134,7 @@ services:
       postgres_test:
         condition: service_healthy
       rabbitmq:
-        condition: service_started
+        condition: service_healthy
       tasks_service:
         condition: service_started
 
@@ -152,7 +152,7 @@ services:
       postgres_test:
         condition: service_healthy
       rabbitmq:
-        condition: service_started
+        condition: service_healthy
       tasks_service:
         condition: service_started
 

@@ -2,5 +2,7 @@ import time
 
 
 def calc_prices(*args, **kwargs):
-    time.sleep(20)
+    time.sleep(5)
+    if 'failed' in kwargs.keys():
+        2 / 0
     return {'result': 'Done'}

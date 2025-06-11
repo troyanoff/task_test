@@ -2,5 +2,7 @@ import time
 
 
 def calc_report(*args, **kwargs):
-    time.sleep(30)
+    time.sleep(5)
+    if 'failed' in kwargs.keys():
+        2 / 0
     return {'result': 'Done'}

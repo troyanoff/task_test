@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from http import HTTPStatus
 
 from core.config import settings as st
@@ -19,7 +19,8 @@ router = APIRouter()
     response_model=BaseTaskS,
     response_model_by_alias=False,
     summary='Create',
-    description='Create new task',
+    description='Creating new task',
+    status_code=status.HTTP_201_CREATED
 )
 async def create(
     body: TaskCreateS,
@@ -72,8 +73,8 @@ async def task_info(
     '/{task_id}/status',
     response_model=TaskStatusS,
     response_model_by_alias=False,
-    summary='Task info',
-    description='Show task info',
+    summary='Task status',
+    description='Show task status',
 )
 async def task_status(
     task_id: str,
@@ -90,15 +91,14 @@ async def task_status(
 
 @router.delete(
     '/{task_id}',
-    response_model=BaseTaskS,
-    response_model_by_alias=False,
     summary='Task cancel',
-    description='Delete task from queue',
+    description='Removing tasks from the queue',
+    status_code=status.HTTP_204_NO_CONTENT
 )
 async def cancel_task(
     task_id: str,
     task_service: TaskService = Depends(get_task_service),
-) -> BaseTaskS:
+):
     item = await task_service.get(task_id)
     if isinstance(item, ExcBaseS):
         raise HTTPException(
@@ -118,14 +118,13 @@ async def cancel_task(
             status_code=result.code,
             detail=result.msg,
         )
-    return item
 
 
 @router.get(
     '/',
     response_model=TaskListS,
     response_model_by_alias=False,
-    summary='Get task list',
+    summary='Task list',
     description='Get task list',
 )
 async def get_all(

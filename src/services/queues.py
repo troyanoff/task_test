@@ -1,14 +1,8 @@
 from aio_pika import Channel, Message, DeliveryMode
 from fastapi import Depends
 from functools import lru_cache
-from http import HTTPStatus
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.rebbit import get_rabbit_channel
-from models.tasks import Task
-from schemas.tasks import TaskToDBS, TaskS
-from schemas.exceptions import ExcBaseS
 
 
 class QueueService:

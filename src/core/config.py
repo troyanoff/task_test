@@ -9,7 +9,6 @@ from core.logger import LOGGING
 load_dotenv()
 
 
-# Применяем настройки логирования
 logging_config.dictConfig(LOGGING)
 
 

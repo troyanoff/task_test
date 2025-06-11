@@ -1,126 +1,25 @@
 import argparse
 import logging
-import pika
 import signal
-import threading
 import time
 
-from datetime import datetime
-from pika.adapters.blocking_connection import BlockingChannel
-from pika.spec import Basic
-from sqlalchemy import create_engine, select, update
-from sqlalchemy.orm import Session
-from uuid import UUID
+from threading import Event, Thread
 
-from core.config import settings as st
-from models.tasks import Task, TaskStatus
-from schemas.tasks import TaskS
-from sync_tasks import task_list
+from worker import Worker
 
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-logging.getLogger('pika').setLevel(logging.WARNING)
-
-
-stop_event = threading.Event()
-
-engine = create_engine(st.dsn_postgres_sync)
-
-
-class DB:
-
-    def get(self, task_id: UUID):
-        with Session(engine) as session:
-            stmt = select(Task).where(Task.uuid == task_id)
-            task = session.scalars(stmt).one()
-        return TaskS.model_validate(task, from_attributes=True)
-
-    def update(self, task_id: UUID, update_fields: dict):
-        with Session(engine) as session:
-            stmt = update(Task).where(Task.uuid == task_id).values(
-                **update_fields)
-            session.execute(stmt)
-            session.commit()
+# Настройка логирования
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+    ]
+)
+logging.getLogger('pika').setLevel(logging.CRITICAL)
 
 
-def process_message(
-    channel: BlockingChannel,
-    method: Basic.Deliver,
-    body: bytes
-):
-    if stop_event.is_set():
-        return
-    db = DB()
-    try:
-        task = TaskS.model_validate_json(body.decode())
-        db_task = db.get(task_id=task.uuid)
-        if db_task.status == TaskStatus.CANCELLED:
-            logger.info(f'{task.uuid=} was CANCELLED')
-            return
-
-        logger.info(f'Processing: {task.uuid=}')
-
-        db.update(
-            task_id=task.uuid,
-            update_fields=TaskS(
-                status=TaskStatus.IN_PROGRESS,
-                started_at=datetime.now()
-            ).model_dump(exclude_unset=True)
-        )
-
-        result = task_list[task.name](**task.params)
-
-        channel.basic_ack(delivery_tag=method.delivery_tag)
-        logger.info(f'Completed: {task.uuid=}, {result=}')
-        db.update(
-            task_id=task.uuid,
-            update_fields=TaskS(
-                status=TaskStatus.COMPLETED,
-                completed_at=datetime.now(),
-                result=result
-            ).model_dump(exclude_unset=True)
-        )
-
-    except Exception as e:
-        logger.error(f'Error {e}')
-        db.update(
-            task_id=task.uuid,
-            update_fields=TaskS(
-                status=TaskStatus.FAILED,
-                exc_info=str(e)
-            ).model_dump(exclude_unset=True)
-        )
-
-
-def worker(queue_name: str):
-    logger.info('Start worker')
-    connection = None
-    try:
-        connection = pika.BlockingConnection(pika.URLParameters(st.dsn_rebbit))
-        channel = connection.channel()
-        channel.basic_qos(prefetch_count=1)
-        while not stop_event.is_set():
-            method_frame, _, body = channel.basic_get(
-                queue=queue_name, auto_ack=False)
-            if method_frame:
-                process_message(channel, method_frame, body)
-            else:
-                time.sleep(0.2)
-    except Exception as e:
-        logger.info(f'Worker error: {e}')
-    finally:
-        if connection and connection.is_open:
-            connection.close()
-        logger.info('Worker stopped')
-
-
-def signal_handler(sig, frame):
-    stop_event.set()
-
-
-def parse_args():
+def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description='RabbitMQ Sync Worker with Thread Pool')
     parser.add_argument(
@@ -132,7 +31,7 @@ def parse_args():
         '--threads',
         type=int,
         default=5,
-        help='Threads count (default: 5)'
+        help='Number of worker threads (default: 5)'
     )
     return parser.parse_args()
 
@@ -140,17 +39,43 @@ def parse_args():
 def main():
     args = parse_args()
 
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
-    logger.info(f'Created {args.threads} workers')
-    threads = []
-    for _ in range(args.threads):
-        t = threading.Thread(target=worker, args=[args.queue])
-        t.start()
-        threads.append(t)
+    logger = logging.getLogger(__name__)
+    logger.info(
+        'Starting %s workers for queue <%s>',
+        args.threads, args.queue
+    )
+    threads: list[Thread] = []
 
-    for t in threads:
-        t.join()
+    try:
+
+        stop_event = Event()
+        signal.signal(signal.SIGINT, lambda: stop_event.set())
+        signal.signal(signal.SIGTERM, lambda: stop_event.set())
+
+        for i in range(args.threads):
+            worker_name = f'Worker_{i+1}'
+            worker_logger = logging.getLogger(worker_name)
+            worker = Worker(
+                worker_name=worker_name,
+                queue_name=args.queue,
+                stop_event=stop_event,
+                logger=worker_logger
+            )
+            t = Thread(
+                target=worker.start,
+                name=worker_name,
+                daemon=True
+            )
+            t.start()
+            threads.append(t)
+            time.sleep(0.1)
+
+        for t in threads:
+            t.join()
+    except Exception:
+        logger.error('Main error', exc_info=True)
+    finally:
+        logger.info('All workers stopped')
 
 
 if __name__ == '__main__':

@@ -53,6 +53,18 @@ class Settings(BaseSettings):
         'calc_report': 'Составление отчета',
     }
 
+    start_sleep_time: float = 0.1
+    factor: int = 2
+    border_sleep_time: int = 10
+    pool_recycle: int = 600
+    pool_size: int = 20
+    max_overflow: int = 10
+
+    heartbeat: int = 600
+    blocked_connection_timeout: int = 30
+    socket_timeout: int = 40
+    retry_delay: int = 5
+
     @computed_field
     @property
     def dsn_postgres(self) -> str:

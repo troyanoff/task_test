@@ -1,11 +1,12 @@
 import asyncio
 
-from aio_pika import connect, IncomingMessage
+from aio_pika import IncomingMessage, connect_robust
 from aio_pika.exceptions import AMQPError
 from datetime import datetime
 from functools import wraps
 from logging import Logger
 from socket import gaierror
+from typing import Any
 
 from core.config import settings as st
 from db_operations import DBError, DB
@@ -67,8 +68,16 @@ class AsyncWorker:
         self.queue = None
         self.run_worker = True
 
+    async def bad_db_response(self, result: Any, message: IncomingMessage):
+        if isinstance(result, DBError):
+            self.logger.error('Error db connection')
+            self.run_worker = False
+            await message.nack()
+            return True
+        return False
+
     async def create_connection(self):
-        self.connection = await connect(self.rabbitmq_url)
+        self.connection = await connect_robust(self.rabbitmq_url)
         self.channel = await self.connection.channel()
         await self.channel.set_qos(prefetch_count=self.max_concurrent_tasks)
 
@@ -86,11 +95,10 @@ class AsyncWorker:
                 task = TaskS.model_validate_json(message.body.decode())
                 db_task = await self.db.get(
                     task_id=task.uuid)
-                if isinstance(db_task, DBError):
-                    self.logger.error('Error db connection')
-                    self.run_worker = False
-                    await message.nack()
+
+                if await self.bad_db_response(db_task, message):
                     return
+
                 if db_task.status == TaskStatus.CANCELLED:
                     self.logger.info(
                         'task.uuid=%s was CANCELLED',
@@ -110,10 +118,8 @@ class AsyncWorker:
                         started_at=datetime.now()
                     ).model_dump(exclude_unset=True)
                 )
-                if isinstance(result, DBError):
-                    self.logger.error('Error db connection')
-                    self.run_worker = False
-                    await message.nack()
+
+                if await self.bad_db_response(result, message):
                     return
 
                 try:
@@ -126,6 +132,8 @@ class AsyncWorker:
                             exc_info=str(e)
                         ).model_dump(exclude_unset=True)
                     )
+                    if await self.bad_db_response(result, message):
+                        return
                     self.logger.error(
                         'Error processing task: '
                         'uuid=%s, error_type=%s, error_mag=%s',
@@ -141,10 +149,8 @@ class AsyncWorker:
                         result=result_task
                     ).model_dump(exclude_unset=True)
                 )
-                if isinstance(result, DBError):
-                    self.logger.error('Error db connection')
-                    self.run_worker = False
-                    await message.nack()
+
+                if await self.bad_db_response(result, message):
                     return
 
                 self.logger.info(
@@ -164,13 +170,7 @@ class AsyncWorker:
             'Max concurrent tasks: %s',
             self.queue_name, self.max_concurrent_tasks
         )
-        # await self.queue.consume(self.process_task)
-        while self.run_worker:
-            message = await self.queue.get(fail=False)
-            if not message:
-                await asyncio.sleep(0.5)
-                continue
-            await self.process_task(message)
+        await self.queue.consume(self.process_task)
 
     async def stop(self):
         if self.connection:

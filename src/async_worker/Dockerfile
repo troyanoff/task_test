@@ -12,7 +12,6 @@ RUN pip install --upgrade pip \
 
 COPY src/models/ models/
 COPY src/core/ core/
-COPY src/db/ db/
 COPY src/async_tasks/ async_tasks/
 COPY src/task_schemas/ schemas/
 COPY src/async_worker/ .

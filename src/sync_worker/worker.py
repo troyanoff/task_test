@@ -82,6 +82,9 @@ class Worker:
         self.connection = BlockingConnection(params)
         self.logger.info('Successfully connected to RabbitMQ')
 
+    def execute_task(self, task: TaskS):
+        return task_list[task.name](**task.params)
+
     def message_handler(
         self,
         channel: BlockingChannel,
@@ -89,58 +92,37 @@ class Worker:
         _,
         body: bytes
     ):
-        try:
-            task = TaskS.model_validate_json(body.decode())
+        task = TaskS.model_validate_json(body.decode())
 
-            db_task = self.db.get(task_id=task.uuid)
-            if not db_task:
-                self.logger.error(
-                    'Failed to get task %s from database', task.uuid
-                )
-                channel.basic_ack(delivery_tag=method.delivery_tag)
-                return
-            if db_task.status == TaskStatus.CANCELLED:
-                self.logger.info('task.uuid=%s was CANCELLED', task.uuid)
-                channel.basic_ack(delivery_tag=method.delivery_tag)
-                return
-
-            self.logger.info('Processing: task.uuid=%s', task.uuid)
-
-            success_update = self.db.update(
-                task_id=task.uuid,
-                update_fields=TaskS(
-                    status=TaskStatus.IN_PROGRESS,
-                    started_at=datetime.now()
-                ).model_dump(exclude_unset=True)
+        db_task = self.db.get(task_id=task.uuid)
+        if not db_task:
+            self.logger.error(
+                'Failed to get task %s from database', task.uuid
             )
-            if not success_update:
-                self.logger.error(
-                    'Failed to update task %s status to %s',
-                    task.uuid, 'IN_PROGRESS'
-                )
-                return
-
-            result = task_list[task.name](**task.params)
-
             channel.basic_ack(delivery_tag=method.delivery_tag)
-            self.logger.info(
-                'Completed: task.uuid=%s, result=%s',
-                task.uuid, result
-            )
+            return
+        if db_task.status == TaskStatus.CANCELLED:
+            self.logger.info('task.uuid=%s was CANCELLED', task.uuid)
+            channel.basic_ack(delivery_tag=method.delivery_tag)
+            return
 
-            success_update = self.db.update(
-                task_id=task.uuid,
-                update_fields=TaskS(
-                    status=TaskStatus.COMPLETED,
-                    completed_at=datetime.now(),
-                    result=result
-                ).model_dump(exclude_unset=True)
+        self.logger.info('Processing: task.uuid=%s', task.uuid)
+
+        success_update = self.db.update(
+            task_id=task.uuid,
+            update_fields=TaskS(
+                status=TaskStatus.IN_PROGRESS,
+                started_at=datetime.now()
+            ).model_dump(exclude_unset=True)
+        )
+        if not success_update:
+            self.logger.error(
+                'Failed to update task %s status to %s',
+                task.uuid, 'IN_PROGRESS'
             )
-            if not success_update:
-                self.logger.error(
-                    'Failed to update task %s status to %s',
-                    task.uuid, 'COMPLETED'
-                )
+            return
+        try:
+            result = self.execute_task(task)
 
         except Exception as e:
             self.logger.error(
@@ -161,6 +143,27 @@ class Worker:
                     'Failed to update task %s status to %s',
                     task.uuid, 'FAILED'
                 )
+            return
+
+        channel.basic_ack(delivery_tag=method.delivery_tag)
+        self.logger.info(
+            'Completed: task.uuid=%s, result=%s',
+            task.uuid, result
+        )
+
+        success_update = self.db.update(
+            task_id=task.uuid,
+            update_fields=TaskS(
+                status=TaskStatus.COMPLETED,
+                completed_at=datetime.now(),
+                result=result
+            ).model_dump(exclude_unset=True)
+        )
+        if not success_update:
+            self.logger.error(
+                'Failed to update task %s status to %s',
+                task.uuid, 'COMPLETED'
+            )
 
     @connect_saver
     def start(self):

@@ -57,7 +57,7 @@ services:
     restart: always
     env_file:
       - .env
-    command: ["python3", "main.py", "--queue", "CPU_fast"]
+    command: ["python3", "main.py", "--queue", "CPU_fast", "--threads", "5"]
     depends_on:
       postgres_test:
         condition: service_healthy
@@ -75,7 +75,7 @@ services:
     restart: always
     env_file:
       - .env
-    command: ["python3", "main.py", "--queue", "CPU_normal"]
+    command: ["python3", "main.py", "--queue", "CPU_normal", "--threads", "5"]
     depends_on:
       postgres_test:
         condition: service_healthy
@@ -93,7 +93,7 @@ services:
     restart: always
     env_file:
       - .env
-    command: ["python3", "main.py", "--queue", "CPU_slow"]
+    command: ["python3", "main.py", "--queue", "CPU_slow", "--threads", "5"]
     depends_on:
       postgres_test:
         condition: service_healthy
@@ -111,7 +111,7 @@ services:
     restart: always
     env_file:
       - .env
-    command: ["python3", "main.py", "--queue", "IO_fast"]
+    command: ["python3", "main.py", "--queue", "IO_fast", "--max-tasks", "5"]
     depends_on:
       postgres_test:
         condition: service_healthy
@@ -129,7 +129,7 @@ services:
     restart: always
     env_file:
       - .env
-    command: ["python3", "main.py", "--queue", "IO_normal"]
+    command: ["python3", "main.py", "--queue", "IO_normal", "--max-tasks", "5"]
     depends_on:
       postgres_test:
         condition: service_healthy
@@ -147,7 +147,7 @@ services:
     restart: always
     env_file:
       - .env
-    command: ["python3", "main.py", "--queue", "IO_slow"]
+    command: ["python3", "main.py", "--queue", "IO_slow", "--max-tasks", "5"]
     depends_on:
       postgres_test:
         condition: service_healthy
